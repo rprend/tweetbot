@@ -67,6 +67,8 @@ app.get("/callback", async (req, res) => {
 app.post("/sms", async (req, res) => {
   const { From: from, Body: body } = req.body;
 
+  console.log("req", req);
+  console.log("req.body", req.body);
   if (from !== MY_NUMBER) {
     return res.status(403).send("unauthorized");
   }
@@ -76,7 +78,9 @@ app.post("/sms", async (req, res) => {
       process.env.REFRESH_TOKEN
     );
 
-    await authedClient.v2.tweet(body);
+    // Dont actually send the tweet, just log it
+    console.log("sending tweet", body);
+    // await authedClient.v2.tweet(body);
     res.send("<Response></Response>");
   } catch (err) {
     console.error("tweet failed:", err);
