@@ -5,3 +5,5 @@ node_modules
 .env
 
 tokens.json
+
+refresh.db

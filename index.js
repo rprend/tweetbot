@@ -2,6 +2,7 @@ import fs from "fs";
 import express from "express";
 import { TwitterApi } from "twitter-api-v2";
 import "dotenv/config";
+import Database from "better-sqlite3";
 
 const app = express();
 app.use(express.urlencoded({ extended: false }));
@@ -14,10 +15,38 @@ const {
   CALLBACK_URL = "http://localhost:3000/callback",
 } = process.env;
 
-const tokenPath = "./tokens.json";
-const loadTokens = () => JSON.parse(fs.readFileSync(tokenPath, "utf-8"));
-const saveTokens = (tokens) =>
-  fs.writeFileSync(tokenPath, JSON.stringify(tokens, null, 2));
+// Initialize SQLite database
+let db = null;
+
+const getDb = () => {
+  if (db) {
+    db.close();
+  }
+  db = new Database("refresh.db");
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS tokens (
+      key TEXT PRIMARY KEY,
+      value TEXT
+    )
+  `);
+  return db;
+};
+
+// Token storage functions
+const loadTokens = () => {
+  const database = getDb();
+  const row = database
+    .prepare("SELECT value FROM tokens WHERE key = ?")
+    .get("refresh_token");
+  return { refresh_token: row?.value || null };
+};
+
+const saveTokens = (tokens) => {
+  const database = getDb();
+  database
+    .prepare("INSERT OR REPLACE INTO tokens (key, value) VALUES (?, ?)")
+    .run("refresh_token", tokens.refresh_token);
+};
 
 const twitter = new TwitterApi({
   clientId: CLIENT_ID,
@@ -55,7 +84,7 @@ app.get("/callback", async (req, res) => {
       redirectUri: CALLBACK_URL,
     });
 
-    // Save tokens to file
+    // Save tokens to SQLite
     saveTokens({ refresh_token: refreshToken });
 
     console.log("✅ accessToken:", accessToken);
@@ -83,6 +112,7 @@ app.post("/sms", async (req, res) => {
   try {
     const { refresh_token } = loadTokens();
 
+    console.log("refresh_token", refresh_token);
     const { client: authedClient, refreshToken: newRefreshToken } =
       await twitter.refreshOAuth2Token(refresh_token);
 
@@ -91,7 +121,7 @@ app.post("/sms", async (req, res) => {
 
     // Dont actually send the tweet, just log it
     console.log("sending tweet", body);
-    // await authedClient.v2.tweet(body);
+    await authedClient.v2.tweet(body);
     res.send("<Response></Response>");
   } catch (err) {
     console.error("tweet failed:", err);
