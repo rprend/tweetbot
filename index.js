@@ -1,3 +1,4 @@
+import fs from "fs";
 import express from "express";
 import { TwitterApi } from "twitter-api-v2";
 import "dotenv/config";
@@ -12,6 +13,11 @@ const {
   CLIENT_SECRET,
   CALLBACK_URL = "http://localhost:3000/callback",
 } = process.env;
+
+const tokenPath = "./tokens.json";
+const loadTokens = () => JSON.parse(fs.readFileSync(tokenPath, "utf-8"));
+const saveTokens = (tokens) =>
+  fs.writeFileSync(tokenPath, JSON.stringify(tokens, null, 2));
 
 const twitter = new TwitterApi({
   clientId: CLIENT_ID,
@@ -49,6 +55,9 @@ app.get("/callback", async (req, res) => {
       redirectUri: CALLBACK_URL,
     });
 
+    // Save tokens to file
+    saveTokens({ refresh_token: refreshToken });
+
     console.log("✅ accessToken:", accessToken);
     console.log("🔄 refreshToken:", refreshToken);
     console.log("⏳ expires in:", expiresIn);
@@ -67,16 +76,18 @@ app.get("/callback", async (req, res) => {
 app.post("/sms", async (req, res) => {
   const { From: from, Body: body } = req.body;
 
-  console.log("req", req);
-  console.log("req.body", req.body);
   if (from !== MY_NUMBER) {
     return res.status(403).send("unauthorized");
   }
 
   try {
-    const { client: authedClient } = await twitter.refreshOAuth2Token(
-      process.env.REFRESH_TOKEN
-    );
+    const { refresh_token } = loadTokens();
+
+    const { client: authedClient, refreshToken: newRefreshToken } =
+      await twitter.refreshOAuth2Token(refresh_token);
+
+    // persist new refresh token
+    saveTokens({ refresh_token: newRefreshToken });
 
     // Dont actually send the tweet, just log it
     console.log("sending tweet", body);
